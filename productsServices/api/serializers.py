@@ -1,36 +1,56 @@
 '''
 criando serializer informandos os campos de forma manual criando cada um e seus tipos
 '''
+from collections import defaultdict
 from rest_framework import serializers
-from productsServices.models import Categoria
+from productsServices.models import Categoria, Produto
+from usersPerson.api.serializers import ClientTenantSerializer
+import re
 
-class ProductSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    nome = serializers.CharField()
-    preco = serializers.DecimalField(max_digits=10, decimal_places=2)
 
-    #campo categoria possui chave estrangeira em produto e utilizando serializers.StringRelatedField()
-    # pegamos o moetodo str da class categoria que exibe o nome da categoria relacionada ao produto
+class ProductSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Produto
+        fields = ['id','codigo', 'nome', "preco_custo", 'preco', 'ean', 'imagem', 'estoque', 'is_active', 'margem_lucro', 'porcentagem_lucro', 'marca', 'categoria', 'client_tenant' ]
+
+    # Campo categoria configurado para mostrar o String com o nome da categoria ao invés di id
     categoria = serializers.StringRelatedField()
-    imagem = serializers.CharField()
-    
-    ''' 
-    Exemplo de como buscar um campo de chave estrangeira e exibir seu id e seu nome em um outro campo renomedo e referenciando o campo original do model
+    # Campo marca configurado para mostrar o String com o nome da marca ao invés di id
+    marca = serializers.StringRelatedField()
 
-    #quando precisamos utilizar um campo que sera chave estrangeira fazemos a declaração da variavel e atribuimos a ela o tipo de PrimaryKeyRelatedField
-    # e precisamos passar como parametro para ela uma queryset com as informações dos dados dessa categoria utilizando o parametro queryset = Categoria.objects.all()
-    # 
+    client_tenant = ClientTenantSerializer(many=False, read_only=True)
 
-    categoria = serializers.PrimaryKeyRelatedField(
-        queryset = Categoria.objects.all()
-    )
-    '''
+
+    def validate(self, attrs):
+        
+        super_validate = super().validate(attrs)
+
+        cd = attrs
+        _my_errors = defaultdict(list)
+
+        codigo = cd.get('codigo')
+        nome = cd.get('nome')
+
+        # Regex para encontrar caracteres especiais
+        padrao = r'[^a-zA-Z0-9\s]'
+
+        # Encontrar todos os caracteres especiais
+        caracteres_especiais_nome = re.findall(padrao, nome)
+        caracteres_especiais_codigo = re.findall(padrao, codigo)
+
+        if caracteres_especiais_nome:
+            _my_errors['nome'].append('Não e permitido caracteres especiais no nome do produto')
+
+        if caracteres_especiais_codigo:
+            _my_errors['codigo'].append('Não e permitido caracteres especiais no codigo do produto')
+
+        if _my_errors:
+            raise serializers.ValidationError(_my_errors)
+        
+        return super_validate
+
     
-    '''
-    #criamos um nome campo  categoria_nome = serializers.StringRelatedField(source='categoria')
-    onde o paramentro source indica para qual campo estamos referenciado a renomeação do campo
-    assim podemos obter o id no campo categoria e o nome da categoria no categoria_nome
-    
-    categoria_nome = serializers.StringRelatedField(source='categoria')
-    '''
-    
+    def validate_codigo(self, value):
+        if not value.isalnum():  # Exemplo de validação adicional
+            raise serializers.ValidationError('O código deve conter apenas caracteres alfanuméricos.')
+        return value
